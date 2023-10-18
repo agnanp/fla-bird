@@ -1,5 +1,5 @@
 import { AfterViewInit, Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
-import { BirdInterface, PipeInterface, StateGame } from '../../types/bird.interface';
+import { BirdInterface, PipeInterface, StateGame } from '../../types/game.interface';
 import { fromEvent } from 'rxjs';
 import { CookieService } from 'ngx-cookie-service';
 
