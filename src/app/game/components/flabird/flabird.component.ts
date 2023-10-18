@@ -155,8 +155,12 @@ export class FlabirdComponent implements OnInit, AfterViewInit, OnDestroy {
 
     this.context.drawImage(this.birdImg, this.bird.x, this.bird.y, this.bird.width, this.bird.height);
 
-    if (this.bird.y > this.board.height) { 
+    //keep bird inside the board
+    if (this.bird.y > this.board.height - 90) { 
+      this.bird.y = this.board.height - 90;
       this.gameOver = true;
+    } else if (this.bird.y < 5) {
+      this.bird.y = 5;
     }
 
     for (let i = 0; i < this.pipeArray.length; i++) {
@@ -185,7 +189,7 @@ export class FlabirdComponent implements OnInit, AfterViewInit, OnDestroy {
 
     this.context.fillStyle = "white";
     this.context.font= "45px sans-serif";
-    this.context.fillText(String(this.score), 5, 45);
+    this.context.fillText(String(this.score), 10, 45);
 
     if(this.gameOver) {
       this.context.fillText("GAME OVER", this.boardWidth/8, this.boardHeight/2);
