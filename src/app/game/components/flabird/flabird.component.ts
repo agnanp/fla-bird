@@ -50,7 +50,7 @@ export class FlabirdComponent implements OnInit, AfterViewInit, OnDestroy {
   //physics
   private velocityX: number= -2; //pipes moving left speed
   private velocityY: number = 0; //bird jump speed
-  private gravity: number = 0.4;
+  private gravity: number = 0.25;
 
   private gameOver: boolean = false;
   private score: number = 0;
