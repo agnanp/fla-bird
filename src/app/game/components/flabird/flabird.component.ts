@@ -1,6 +1,6 @@
-import { AfterViewInit, Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { BirdInterface, PipeInterface, StateGame } from '../../types/game.interface';
-import { fromEvent } from 'rxjs';
+import { Observable, Subscription, fromEvent, interval } from 'rxjs';
 import { CookieService } from 'ngx-cookie-service';
 
 @Component({
@@ -8,16 +8,16 @@ import { CookieService } from 'ngx-cookie-service';
   templateUrl: './flabird.component.html',
   styleUrls: ['./flabird.component.css']
 })
-export class FlabirdComponent implements OnInit, AfterViewInit, OnDestroy {
+export class FlabirdComponent implements OnInit, OnDestroy {
 
   private currentState: number = 0;
-  private board!: any;
+  private board!: HTMLCanvasElement;
   
   private boardWidth: number = 360;
   private boardHeight: number = 640;
 
   //splash
-  private splashImg!: any;
+  private splashImg!: HTMLImageElement;
   private splashWidth: number = 188;
   private splashHeight: number = 170;
   private splashX: number = this.boardWidth/5;
@@ -28,24 +28,21 @@ export class FlabirdComponent implements OnInit, AfterViewInit, OnDestroy {
   private birdHeight: number = 24;
   private birdX: number = this.boardWidth/8;
   private birdY: number = this.boardHeight/2;
-  private birdImg!: any;
+  private birdImg!: HTMLImageElement;
   
-  private bird: BirdInterface = {
-    x: this.birdX,
-    y: this.birdY,
-    width: this.birdWidth,
-    height: this.birdHeight
-  }
-
+   
   //pipes
-  private pipeArray: any[]= [];
+  private pipeArray: PipeInterface[] = [];
   private pipeWidth: number = 64; //width/height ratio = 384/3072 = 1/8
   private pipeHeight: number = 512;
   private pipeX: number = this.boardWidth;
   private pipeY: number = 0;
 
-  private topPipeImg!: any;
-  private bottomPipeImg!: any;
+  private topPipeImg!: HTMLImageElement;
+  private bottomPipeImg!: HTMLImageElement;
+
+  private randomPipeY!: number;
+  private openingSpace!: number;
 
   //physics
   private velocityX: number= -2; //pipes moving left speed
@@ -56,16 +53,32 @@ export class FlabirdComponent implements OnInit, AfterViewInit, OnDestroy {
   private score: number = 0;
   private hightScore: number = 0;
   private cookieHightscore!: string;
-  private idPipes!: any;
 
-  @ViewChild('boardElRef') boardElRef!: ElementRef<HTMLCanvasElement>;
-  context!: CanvasRenderingContext2D;
+  private idPipes!: Subscription;
+  private idClick!: Subscription;
+  
+  private loopPipes!: Observable<number>;
+
+  private bird: BirdInterface = {
+    x: this.birdX,
+    y: this.birdY,
+    width: this.birdWidth,
+    height: this.birdHeight
+  }
+
+  private bottomPipe!: PipeInterface;
+  private topPipe!: PipeInterface;
+
+
+  @ViewChild('boardElRef', {static: true}) boardElRef!: ElementRef<HTMLCanvasElement>;
+  context!: CanvasRenderingContext2D | null;
 
   constructor(private cookieService: CookieService) { 
   }
 
   documentClick$ = fromEvent(document, 'click');
   ngOnInit() {
+    this.startScreen();    
     this.cookieHightscore = this.cookieService.get('hightscore');
     
     if (this.cookieHightscore != "")
@@ -73,7 +86,7 @@ export class FlabirdComponent implements OnInit, AfterViewInit, OnDestroy {
       this.hightScore = parseInt(this.cookieHightscore);
     }
 
-    this.documentClick$.subscribe((e) => {
+    this.idClick = this.documentClick$.subscribe(() => {
       if (this.currentState == StateGame.GameScreen)
       {
         this.moveBird();
@@ -86,14 +99,10 @@ export class FlabirdComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    if (this.idPipes) {
-      clearInterval(this.idPipes);
-    }
-  }  
+    this.idClick.unsubscribe();
+    this.idPipes.unsubscribe();
 
-  ngAfterViewInit(): void {
-    this.startScreen();    
-  }
+  }  
 
   startScreen(): void{
     this.currentState = StateGame.StartScreen;
@@ -107,7 +116,7 @@ export class FlabirdComponent implements OnInit, AfterViewInit, OnDestroy {
     this.birdImg = new Image();
     this.birdImg.src = "/assets/flappybird.png";
     this.birdImg.onload = () => {
-      this.context.drawImage(this.birdImg, this.bird.x, this.bird.y, this.bird.width, this.bird.height);
+      this.context!.drawImage(this.birdImg, this.bird.x, this.bird.y, this.bird.width, this.bird.height);
     }
     
     this.topPipeImg = new Image();
@@ -119,7 +128,7 @@ export class FlabirdComponent implements OnInit, AfterViewInit, OnDestroy {
     this.splashImg = new Image();
     this.splashImg.src = "/assets/splash.png";
     this.splashImg.onload = () => {
-      this.context.drawImage(this.splashImg, this.splashX, this.splashY, this.splashWidth, this.splashHeight);
+      this.context!.drawImage(this.splashImg, this.splashX, this.splashY, this.splashWidth, this.splashHeight);
     }
   }
 
@@ -129,9 +138,8 @@ export class FlabirdComponent implements OnInit, AfterViewInit, OnDestroy {
     
     requestAnimationFrame(() => this.update());
     
-    this.idPipes = setInterval(() => {
-      this.placePipes();
-    }, 1500);
+    this.loopPipes = interval(1500);
+    this.idPipes = this.loopPipes.subscribe(() => this.placePipes());
   }
 
   resetGame(): void {
@@ -147,13 +155,13 @@ export class FlabirdComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    this.context.clearRect(0, 0, this.board.width, this.board.height);
+    this.context!.clearRect(0, 0, this.board.width, this.board.height);
 
     this.velocityY += this.gravity;
 
     this.bird.y = Math.max(this.bird.y + this.velocityY, 0)
 
-    this.context.drawImage(this.birdImg, this.bird.x, this.bird.y, this.bird.width, this.bird.height);
+    this.context!.drawImage(this.birdImg, this.bird.x, this.bird.y, this.bird.width, this.bird.height);
 
     //keep bird inside the board
     if (this.bird.y > this.board.height - 90) { 
@@ -166,7 +174,7 @@ export class FlabirdComponent implements OnInit, AfterViewInit, OnDestroy {
     for (let i = 0; i < this.pipeArray.length; i++) {
       let pipe = this.pipeArray[i];
       pipe.x += this.velocityX;
-      this.context.drawImage(pipe.img, pipe.x, pipe.y, pipe.width, pipe.height);
+      this.context!.drawImage(pipe.img, pipe.x, pipe.y, pipe.width, pipe.height);
 
       if (!pipe.passed && this.bird.x > pipe.x + pipe.width) {
         this.score += 0.5;
@@ -187,14 +195,14 @@ export class FlabirdComponent implements OnInit, AfterViewInit, OnDestroy {
       this.cookieService.set('hightscore', String(this.hightScore));
     }
 
-    this.context.fillStyle = "white";
-    this.context.font= "45px sans-serif";
-    this.context.fillText(String(this.score), 10, 45);
+    this.context!.fillStyle = "white";
+    this.context!.font= "45px sans-serif";
+    this.context!.fillText(String(this.score), 10, 45);
 
     if(this.gameOver) {
-      this.context.fillText("GAME OVER", this.boardWidth/8, this.boardHeight/2);
-      this.context.fillText(`Score: ${String(this.score)}`, this.boardWidth/4, this.boardHeight/1.75);
-      this.context.fillText(`Best: ${String(this.hightScore)}`, this.boardWidth/4, this.boardHeight/1.55);
+      this.context!.fillText("GAME OVER", this.boardWidth/8, this.boardHeight/2);
+      this.context!.fillText(`Score: ${String(this.score)}`, this.boardWidth/4, this.boardHeight/1.75);
+      this.context!.fillText(`Best: ${String(this.hightScore)}`, this.boardWidth/4, this.boardHeight/1.55);
     }
 
   }
@@ -204,29 +212,29 @@ export class FlabirdComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    let randomPipeY = this.pipeY - this.pipeHeight/4 - Math.random()*(this.pipeHeight/2);
-    let openingSpace = this.board.height/4;
-
-    let topPipe: PipeInterface = {
-      img: this.topPipeImg,
-      x: this.pipeX,
-      y: randomPipeY,
-      width: this.pipeWidth,
-      height: this.pipeHeight,
-      passed: false
-    }
-
-    this.pipeArray.push(topPipe);
-
-    let bottomPipe: PipeInterface = {
+    this.randomPipeY = this.pipeY - this.pipeHeight/4 - Math.random()*(this.pipeHeight/2);
+    this.openingSpace = this.board.height/4;
+    
+    this.bottomPipe = {
       img: this.bottomPipeImg,
       x: this.pipeX,
-      y: randomPipeY + this.pipeHeight + openingSpace,
+      y: this.randomPipeY + this.pipeHeight + this.openingSpace,
       width: this.pipeWidth,
       height: this.pipeHeight,
       passed: false
     }
-    this.pipeArray.push(bottomPipe);
+
+    this.topPipe = {
+      img: this.topPipeImg,
+      x: this.pipeX,
+      y: this.randomPipeY,
+      width: this.pipeWidth,
+      height: this.pipeHeight,
+      passed: false
+    }
+
+    this.pipeArray.push(this.topPipe);   
+    this.pipeArray.push(this.bottomPipe);
   }
 
   moveBird(): void{
@@ -237,7 +245,7 @@ export class FlabirdComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  detectCollision(a: any, b: any) {
+  detectCollision(a: BirdInterface, b: PipeInterface) {
     return a.x < b.x + b.width &&
           a.x + a.width > b.x &&
           a.y < b.y + b.height &&
