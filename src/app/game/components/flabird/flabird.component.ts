@@ -48,6 +48,7 @@ export class FlabirdComponent implements OnInit, OnDestroy {
   private velocityX: number= -2; //pipes moving left speed
   private velocityY: number = 0; //bird jump speed
   private gravity: number = 0.25;
+  private landY!: number;
 
   private gameOver: boolean = false;
   private score: number = 0;
@@ -159,17 +160,16 @@ export class FlabirdComponent implements OnInit, OnDestroy {
 
     this.velocityY += this.gravity;
 
-    this.bird.y = Math.max(this.bird.y + this.velocityY, 0)
+    //keep bird inside the board
+    this.bird.y = Math.max(this.bird.y + this.velocityY, 5);
+    this.landY = this.board.height - (this.birdHeight*3.5); 
+    
+    if (this.bird.y > this.landY) { 
+      this.bird.y = Math.max(this.bird.y, this.landY);
+      this.gameOver = true;
+    }
 
     this.context!.drawImage(this.birdImg, this.bird.x, this.bird.y, this.bird.width, this.bird.height);
-
-    //keep bird inside the board
-    if (this.bird.y > this.board.height - 90) { 
-      this.bird.y = this.board.height - 90;
-      this.gameOver = true;
-    } else if (this.bird.y < 5) {
-      this.bird.y = 5;
-    }
 
     for (let i = 0; i < this.pipeArray.length; i++) {
       let pipe = this.pipeArray[i];
